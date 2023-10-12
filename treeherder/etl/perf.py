@@ -2,16 +2,17 @@ import copy
 import logging
 from datetime import datetime
 from hashlib import sha1
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import simplejson as json
 
 from django.conf import settings
 from treeherder.log_parser.utils import validate_perf_data
-from treeherder.model.models import Job, OptionCollection
+from treeherder.model.models import Job, OptionCollection, Repository
 from treeherder.perf.models import (
     MultiCommitDatum,
     PerformanceDatum,
+    PerformanceDatumReplicate,
     PerformanceFramework,
     PerformanceSignature,
 )
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 def _get_application_name(validated_perf_datum: dict):
     try:
         return validated_perf_datum['application']['name']
+    except KeyError:
+        return ''
+
+
+def _get_application_version(validated_perf_datum: dict):
+    try:
+        return validated_perf_datum['application']['version']
     except KeyError:
         return ''
 
@@ -110,6 +118,18 @@ def _test_should_alert_based_on(
     )
 
 
+def _test_should_gather_replicates_based_on(
+    repository: Repository, replicates: Optional[List] = None
+) -> bool:
+    """
+    Determine if we should gather/ingest replicates. Currently, it's
+    only available on the try branch. Some tests also don't have replicates
+    available as it's not a required field in our performance artifact
+    schema.
+    """
+    return replicates and len(replicates) > 0 and repository.name in ("try",)
+
+
 def _load_perf_datum(job: Job, perf_datum: dict):
     validate_perf_data(perf_datum)
 
@@ -139,6 +159,7 @@ def _load_perf_datum(job: Job, perf_datum: dict):
         )
         return
     application = _get_application_name(perf_datum)
+    application_version = _get_application_version(perf_datum)
     for suite in perf_datum['suites']:
         suite_extra_properties = copy.copy(extra_properties)
         ordered_tags = _order_and_concat(suite.get('tags', []))
@@ -194,7 +215,7 @@ def _load_perf_datum(job: Job, perf_datum: dict):
                 push=job.push,
                 signature=signature,
                 push_timestamp=deduced_timestamp,
-                defaults={'value': suite['value']},
+                defaults={'value': suite['value'], 'application_version': application_version},
             )
             if suite_datum.should_mark_as_multi_commit(is_multi_commit, datum_created):
                 # keep a register with all multi commit perf data
@@ -261,8 +282,27 @@ def _load_perf_datum(job: Job, perf_datum: dict):
                 push=job.push,
                 signature=signature,
                 push_timestamp=deduced_timestamp,
-                defaults={'value': value[0]},
+                defaults={'value': value[0], 'application_version': application_version},
             )
+
+            if _test_should_gather_replicates_based_on(
+                job.repository, subtest.get("replicates", [])
+            ):
+                try:
+                    # Add the replicates to the PerformanceDatumReplicate table, and
+                    # catch and ignore any exceptions that are produced here so we don't
+                    # impact the standard workflow
+                    PerformanceDatumReplicate.objects.bulk_create(
+                        [
+                            PerformanceDatumReplicate(
+                                value=replicate, performance_datum=subtest_datum
+                            )
+                            for replicate in subtest["replicates"]
+                        ]
+                    )
+                except Exception as e:
+                    logger.info(f"Failed to ingest replicates for datum {subtest_datum}: {e}")
+
             if subtest_datum.should_mark_as_multi_commit(is_multi_commit, datum_created):
                 # keep a register with all multi commit perf data
                 MultiCommitDatum.objects.create(perf_datum=subtest_datum)

@@ -36,6 +36,8 @@ from .performance_serializers import (
     IssueTrackerSerializer,
     PerformanceAlertSerializer,
     PerformanceAlertSummarySerializer,
+    PerformanceAlertSummaryTasksSerializer,
+    PerfAlertSummaryTasksQueryParamSerializer,
     PerformanceBugTemplateSerializer,
     PerformanceFrameworkSerializer,
     PerformanceQueryParamsSerializer,
@@ -624,6 +626,7 @@ class PerformanceSummary(generics.ListAPIView):
         no_subtests = query_params.validated_data['no_subtests']
         all_data = query_params.validated_data['all_data']
         no_retriggers = query_params.validated_data['no_retriggers']
+        replicates = query_params.validated_data['replicates']
 
         signature_data = PerformanceSignature.objects.select_related(
             'framework', 'repository', 'platform', 'push', 'job'
@@ -673,8 +676,10 @@ class PerformanceSummary(generics.ListAPIView):
 
         signature_ids = [item['id'] for item in list(self.queryset)]
 
-        data = PerformanceDatum.objects.select_related('push', 'repository', 'id').filter(
-            signature_id__in=signature_ids, repository__name=repository_name
+        data = (
+            PerformanceDatum.objects.select_related('push', 'repository', 'id')
+            .filter(signature_id__in=signature_ids, repository__name=repository_name)
+            .order_by('job_id', 'id')
         )
 
         if revision:
@@ -707,10 +712,23 @@ class PerformanceSummary(generics.ListAPIView):
         else:
             grouped_values = defaultdict(list)
             grouped_job_ids = defaultdict(list)
-            for signature_id, value, job_id in data.values_list('signature_id', 'value', 'job_id'):
-                if value is not None:
-                    grouped_values[signature_id].append(value)
-                    grouped_job_ids[signature_id].append(job_id)
+            if replicates:
+                for signature_id, value, job_id, replicate_value in data.values_list(
+                    'signature_id', 'value', 'job_id', 'performancedatumreplicate__value'
+                ):
+                    if replicate_value is not None:
+                        grouped_values[signature_id].append(replicate_value)
+                        grouped_job_ids[signature_id].append(job_id)
+                    elif value is not None:
+                        grouped_values[signature_id].append(value)
+                        grouped_job_ids[signature_id].append(job_id)
+            else:
+                for signature_id, value, job_id in data.values_list(
+                    'signature_id', 'value', 'job_id'
+                ):
+                    if value is not None:
+                        grouped_values[signature_id].append(value)
+                        grouped_job_ids[signature_id].append(job_id)
 
             # name field is created in the serializer
             for item in self.queryset:
@@ -749,6 +767,32 @@ class PerformanceSummary(generics.ListAPIView):
                 ]
 
         return serialized_data
+
+
+class PerformanceAlertSummaryTasks(generics.ListAPIView):
+    serializer_class = PerformanceAlertSummaryTasksSerializer
+    queryset = None
+
+    def list(self, request):
+        query_params = PerfAlertSummaryTasksQueryParamSerializer(data=request.query_params)
+        if not query_params.is_valid():
+            return Response(data=query_params.errors, status=HTTP_400_BAD_REQUEST)
+
+        alert_summary_id = query_params.validated_data['id']
+        signature_ids = PerformanceAlertSummary.objects.filter(id=alert_summary_id).values_list(
+            'alerts__series_signature__id', 'related_alerts__series_signature__id'
+        )
+        signature_ids = [id for id_set in signature_ids for id in id_set]
+        tasks = (
+            PerformanceDatum.objects.filter(signature__in=signature_ids)
+            .values_list('job__job_type__name', flat=True)
+            .order_by("job__job_type__name")
+            .distinct()
+        )
+        self.queryset = {"id": alert_summary_id, "tasks": tasks}
+        serializer = self.get_serializer(self.queryset)
+
+        return Response(data=serializer.data)
 
 
 class PerfCompareResults(generics.ListAPIView):
@@ -857,7 +901,6 @@ class PerfCompareResults(generics.ListAPIView):
                     base_perf_data_values, new_perf_data_values
                 )
                 confidence_text = perfcompare_utils.get_confidence_text(confidence)
-                detailed_confidence = perfcompare_utils.confidence_detailed_info(confidence_text)
                 sig_hash = (
                     base_sig.get('signature_hash', '')
                     if base_sig
@@ -878,13 +921,18 @@ class PerfCompareResults(generics.ListAPIView):
                 class_name = perfcompare_utils.get_class_name(
                     new_is_better, base_avg_value, new_avg_value, confidence
                 )
+
                 is_improvement = class_name == 'success'
                 is_regression = class_name == 'danger'
                 is_meaningful = class_name == ''
 
                 row_result = {
+                    'base_rev': base_rev,
+                    'new_rev': new_rev,
                     'header_name': header,
                     'platform': platform,
+                    'base_app': base_sig.get('application', ''),
+                    'new_app': new_sig.get('application', ''),
                     'suite': base_sig.get('suite', ''),  # same suite for base_result and new_result
                     'test': base_sig.get('test', ''),  # same test for base_result and new_result
                     'is_complete': is_complete,
@@ -912,7 +960,6 @@ class PerfCompareResults(generics.ListAPIView):
                     'new_retriggerable_job_ids': new_grouped_job_ids.get(new_sig_id, []),
                     'confidence': confidence,
                     'confidence_text': confidence_text,
-                    'confidence_text_long': detailed_confidence,
                     'delta_value': delta_value,
                     'delta_percentage': delta_percentage,
                     'magnitude': magnitude,
@@ -1071,6 +1118,7 @@ class PerfCompareResults(generics.ListAPIView):
             'measurement_unit',
             'lower_is_better',
             'signature_hash',
+            'application',
         )
 
     @staticmethod

@@ -209,7 +209,6 @@ class BugJobMapSerializer(serializers.ModelSerializer):
 
 
 class JobNoteSerializer(serializers.ModelSerializer):
-
     job_id = serializers.PrimaryKeyRelatedField(source="job", read_only=True)
 
     # these custom fields are for backwards compatibility
@@ -242,7 +241,6 @@ class JobNoteJobSerializer(serializers.ModelSerializer):
 
 
 class JobNoteDetailSerializer(serializers.ModelSerializer):
-
     job = JobNoteJobSerializer()
     failure_classification_name = serializers.SlugRelatedField(
         slug_field="name", source="failure_classification", read_only=True
@@ -261,7 +259,6 @@ class JobNoteDetailSerializer(serializers.ModelSerializer):
 
 
 class CommitSerializer(serializers.ModelSerializer):
-
     result_set_id = serializers.PrimaryKeyRelatedField(source="push", read_only=True)
     repository_id = serializers.SlugRelatedField(
         slug_field="repository_id", source="push", read_only=True
@@ -307,36 +304,6 @@ class FailuresSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.BugJobMap
         fields = ('bug_id', 'bug_count')
-
-
-class JobTypeNameField(serializers.Field):
-    """Removes the ending chunk number"""
-
-    def to_representation(self, value):
-        parts = value.split("-")
-        try:
-            _ = int(parts[-1])
-            return '-'.join(parts[:-1])
-        except ValueError:
-            return value
-
-
-class GroupNameSerializer(serializers.ModelSerializer):
-    group_name = serializers.CharField(source="job_log__groups__name")
-    job_type_name = JobTypeNameField(source="job_type__name")
-    group_status = serializers.CharField(source="job_log__group_result__status")
-    failure_classification = serializers.CharField(source="failure_classification_id")
-    job_count = serializers.IntegerField()
-
-    class Meta:
-        model = models.JobLog
-        fields = (
-            'group_name',
-            'job_type_name',
-            'group_status',
-            'failure_classification',
-            'job_count',
-        )
 
 
 class TestSuiteField(serializers.Field):
@@ -417,7 +384,6 @@ class MachinePlatformSerializer(serializers.ModelSerializer):
 
 
 class ChangelogSerializer(serializers.ModelSerializer):
-
     files = serializers.StringRelatedField(many=True)
 
     class Meta:
@@ -439,7 +405,6 @@ class ChangelogSerializer(serializers.ModelSerializer):
 
 
 class InvestigatedTestsSerializers(serializers.ModelSerializer):
-
     jobName = serializers.CharField(source='job_type.name')
     jobSymbol = serializers.CharField(source='job_type.symbol')
 

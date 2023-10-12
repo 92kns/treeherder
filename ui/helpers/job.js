@@ -17,7 +17,7 @@ const btnClasses = {
 };
 
 // failure classification ids that should be shown in "unclassified" mode
-export const thUnclassifiedIds = [1, 7];
+export const thUnclassifiedIds = [1, 6, 7];
 
 // Get the CSS class for job buttons as well as jobs that show in the pinboard.
 // These also apply to result "groupings" like ``failures`` and ``in progress``
@@ -28,8 +28,9 @@ export const getBtnClass = function getBtnClass(
 ) {
   let btnClass = btnClasses[resultStatus] || 'btn-default';
 
-  // handle if a job is classified
-  if (failureClassificationId > 1) {
+  // handle if a job is classified > 1
+  // and not "NEW failure", classification == 6
+  if (failureClassificationId > 1 && failureClassificationId !== 6) {
     btnClass += '-classified';
   }
   return btnClass;
@@ -51,17 +52,16 @@ export const isReftest = function isReftest(job) {
 export const isPerfTest = function isPerfTest(job) {
   return [job.job_group_name, job.job_type_name].some(
     (name) =>
-      (name.toLowerCase().includes('talos') ||
-        name.toLowerCase().includes('raptor') ||
-        name.toLowerCase().includes('browsertime')) &&
-      !name.toLowerCase().includes('side-by-side'),
+      name.toLowerCase().includes('talos') ||
+      name.toLowerCase().includes('raptor') ||
+      name.toLowerCase().includes('browsertime'),
   );
 };
 
-export const isTestIsolatable = function isTestIsolatable(job) {
-  const isolatableRepos = ['autoland', 'mozilla-central', 'try'];
+export const canConfirmFailure = function canConfirmFailure(job) {
+  const confirmRepos = ['autoland', 'mozilla-central', 'try'];
   const repoName = getRepo();
-  if (!isolatableRepos.includes(repoName)) {
+  if (!confirmRepos.includes(repoName)) {
     return false;
   }
   if (job.job_type_name.toLowerCase().includes('jsreftest')) {

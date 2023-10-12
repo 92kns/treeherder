@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.core.management import call_command
 from django.db import connection, IntegrityError
 
@@ -20,6 +21,7 @@ from treeherder.model.models import Push
 from treeherder.perf.exceptions import MaxRuntimeExceeded
 from treeherder.perf.models import (
     PerformanceDatum,
+    PerformanceDatumReplicate,
     PerformanceSignature,
     PerformanceAlertSummary,
     PerformanceAlert,
@@ -202,7 +204,7 @@ def test_try_data_removal(
 
 @pytest.mark.parametrize(
     'repository_name',
-    ['autoland', 'mozilla-beta', 'mozilla-central', 'fenix', 'reference-browser'],
+    ['autoland', 'mozilla-beta', 'fenix', 'reference-browser'],
 )
 def test_irrelevant_repos_data_removal(
     test_repository,
@@ -216,6 +218,10 @@ def test_irrelevant_repos_data_removal(
 
     relevant_repository.name = repository_name
     relevant_repository.save()
+
+    # hack after changing tests.settings.TREEHERDER_TEST_REPOSITORY_NAME to be m-c
+    test_repository.name = "%s-test" % test_repository.name
+    test_repository.save()
 
     six_months_ago_timestamp = datetime.now() - timedelta(days=(6 * 30))
 
@@ -804,9 +810,35 @@ def test_deleting_performance_data_cascades_to_perf_multicomit_data(test_perf_da
 
     try:
         cursor = connection.cursor()
+        if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.mysql':
+            cursor.execute(
+                '''
+                DELETE FROM `performance_datum`
+                WHERE id = %s
+                ''',
+                [perf_datum.id],
+            )
+        else:
+            PerformanceDatum.objects.filter(id=perf_datum.id).delete()
+    except IntegrityError:
+        pytest.fail()
+    finally:
+        cursor.close()
+
+    assert MultiCommitDatum.objects.count() == 0
+
+
+def test_deleting_performance_data_cascades_to_perf_datum_replicate(test_perf_data):
+    perf_datum = test_perf_data[0]
+    PerformanceDatumReplicate.objects.create(performance_datum=perf_datum, value=0.0)
+
+    assert PerformanceDatumReplicate.objects.count() == 1
+
+    try:
+        cursor = connection.cursor()
         cursor.execute(
             '''
-            DELETE FROM `performance_datum`
+            DELETE FROM performance_datum
             WHERE id = %s
             ''',
             [perf_datum.id],
@@ -816,7 +848,7 @@ def test_deleting_performance_data_cascades_to_perf_multicomit_data(test_perf_da
     finally:
         cursor.close()
 
-    assert MultiCommitDatum.objects.count() == 0
+    assert PerformanceDatumReplicate.objects.count() == 0
 
 
 def test_alerts_older_than_a_year_are_removed_even_if_signature_is_active(test_perf_alert):

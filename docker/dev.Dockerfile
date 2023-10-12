@@ -1,4 +1,4 @@
-FROM python:3.9.16
+FROM python:3.9.18-bullseye
 
 # Variables that are not specific to a particular environment.
 ENV NEW_RELIC_CONFIG_FILE newrelic.ini
@@ -26,8 +26,8 @@ ADD . /app
 WORKDIR /app
 
 # Common and dev deps installed separately to prove that common.txt works standalone
-RUN pip install --no-deps --no-cache-dir --disable-pip-version-check --require-hashes -r requirements/common.txt
 RUN pip install --no-deps --no-cache-dir --disable-pip-version-check --require-hashes -r requirements/dev.txt
+RUN pip install --no-deps --no-cache-dir --disable-pip-version-check --require-hashes -r requirements/common.txt
 
 # Setup home so it's readable by nobody
 # mozci will try to read a configuration file there

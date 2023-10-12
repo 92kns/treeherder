@@ -39,6 +39,8 @@ def test_perfcompare_results_against_no_base(
     test = 'dhtml.html'
     extra_options = 'e10s fission stylo webrender'
     measurement_unit = 'ms'
+    base_application = 'firefox'
+    new_application = 'geckoview'
 
     base_sig = create_signature(
         signature_hash=(20 * 't1'),
@@ -49,6 +51,7 @@ def test_perfcompare_results_against_no_base(
         test=test,
         test_perf_signature=test_perf_signature,
         repository=try_repository,
+        application=base_application,
     )
 
     base_perf_data_values = [32.4]
@@ -77,6 +80,7 @@ def test_perfcompare_results_against_no_base(
         test=test,
         test_perf_signature=test_perf_signature,
         repository=test_repository,
+        application=new_application,
     )
 
     job = perf_jobs[1]
@@ -99,6 +103,8 @@ def test_perfcompare_results_against_no_base(
 
     expected = [
         {
+            'base_rev': None,
+            'new_rev': test_perfcomp_push_2.revision,
             'framework_id': base_sig.framework.id,
             'platform': base_sig.platform.platform,
             'suite': base_sig.suite,
@@ -106,6 +112,8 @@ def test_perfcompare_results_against_no_base(
             'header_name': response['header_name'],
             'base_repository_name': base_sig.repository.name,
             'new_repository_name': new_sig.repository.name,
+            'base_app': 'firefox',
+            'new_app': 'geckoview',
             'is_complete': response['is_complete'],
             'base_measurement_unit': base_sig.measurement_unit,
             'new_measurement_unit': new_sig.measurement_unit,
@@ -126,9 +134,6 @@ def test_perfcompare_results_against_no_base(
             'new_stddev_pct': round(response['new_stddev_pct'], 2),
             'confidence': round(response['confidence'], 2),
             'confidence_text': response['confidence_text'],
-            'confidence_text_long': response['confidence_text_long'],
-            't_value_confidence': perfcompare_utils.T_VALUE_CONFIDENCE,
-            't_value_care_min': perfcompare_utils.T_VALUE_CARE_MIN,
             'delta_value': round(response['delta_value'], 2),
             'delta_percentage': round(response['delta_pct'], 2),
             'magnitude': round(response['magnitude'], 2),
@@ -189,6 +194,8 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
     test = 'dhtml.html'
     extra_options = 'e10s fission stylo webrender'
     measurement_unit = 'ms'
+    base_application = 'firefox'
+    new_application = 'geckoview'
 
     base_sig = create_signature(
         signature_hash=(20 * 't1'),
@@ -199,6 +206,7 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
         test=test,
         test_perf_signature=test_perf_signature,
         repository=try_repository,
+        application=base_application,
     )
 
     base_perf_data_values = [32.4]
@@ -227,6 +235,7 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
         test=test,
         test_perf_signature=test_perf_signature,
         repository=test_repository,
+        application=new_application,
     )
 
     job = perf_jobs[1]
@@ -249,6 +258,8 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
 
     expected = [
         {
+            'base_rev': test_perfcomp_push.revision,
+            'new_rev': test_perfcomp_push_2.revision,
             'framework_id': base_sig.framework.id,
             'platform': base_sig.platform.platform,
             'suite': base_sig.suite,
@@ -256,6 +267,8 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
             'header_name': response['header_name'],
             'base_repository_name': base_sig.repository.name,
             'new_repository_name': new_sig.repository.name,
+            'base_app': 'firefox',
+            'new_app': 'geckoview',
             'is_complete': response['is_complete'],
             'base_measurement_unit': base_sig.measurement_unit,
             'new_measurement_unit': new_sig.measurement_unit,
@@ -276,9 +289,6 @@ def test_perfcompare_results_with_only_one_run_and_diff_repo(
             'new_stddev_pct': round(response['new_stddev_pct'], 2),
             'confidence': round(response['confidence'], 2),
             'confidence_text': response['confidence_text'],
-            'confidence_text_long': response['confidence_text_long'],
-            't_value_confidence': perfcompare_utils.T_VALUE_CONFIDENCE,
-            't_value_care_min': perfcompare_utils.T_VALUE_CARE_MIN,
             'delta_value': round(response['delta_value'], 2),
             'delta_percentage': round(response['delta_pct'], 2),
             'magnitude': round(response['magnitude'], 2),
@@ -406,6 +416,8 @@ def test_perfcompare_results_multiple_runs(
 
     expected = [
         {
+            'base_rev': test_perfcomp_push.revision,
+            'new_rev': test_perfcomp_push_2.revision,
             'framework_id': sig1.framework.id,
             'platform': sig1.platform.platform,
             'suite': sig1.suite,
@@ -413,6 +425,8 @@ def test_perfcompare_results_multiple_runs(
             'header_name': first_row['header_name'],
             'base_repository_name': sig1.repository.name,
             'new_repository_name': sig2.repository.name,
+            'base_app': '',
+            'new_app': '',
             'is_complete': first_row['is_complete'],
             'base_measurement_unit': sig1.measurement_unit,
             'new_measurement_unit': sig2.measurement_unit,
@@ -433,9 +447,6 @@ def test_perfcompare_results_multiple_runs(
             'new_stddev_pct': round(first_row['new_stddev_pct'], 2),
             'confidence': round(first_row['confidence'], 2),
             'confidence_text': first_row['confidence_text'],
-            'confidence_text_long': first_row['confidence_text_long'],
-            't_value_confidence': perfcompare_utils.T_VALUE_CONFIDENCE,
-            't_value_care_min': perfcompare_utils.T_VALUE_CARE_MIN,
             'delta_value': round(first_row['delta_value'], 2),
             'delta_percentage': round(first_row['delta_pct'], 2),
             'magnitude': round(first_row['magnitude'], 2),
@@ -451,6 +462,8 @@ def test_perfcompare_results_multiple_runs(
             'is_meaningful': first_row['is_meaningful'],
         },
         {
+            'base_rev': test_perfcomp_push.revision,
+            'new_rev': test_perfcomp_push_2.revision,
             'framework_id': sig3.framework.id,
             'platform': sig3.platform.platform,
             'suite': sig3.suite,
@@ -458,6 +471,8 @@ def test_perfcompare_results_multiple_runs(
             'header_name': second_row['header_name'],
             'base_repository_name': sig3.repository.name,
             'new_repository_name': sig4.repository.name,
+            'base_app': '',
+            'new_app': '',
             'is_complete': second_row['is_complete'],
             'base_measurement_unit': sig3.measurement_unit,
             'new_measurement_unit': sig4.measurement_unit,
@@ -478,9 +493,6 @@ def test_perfcompare_results_multiple_runs(
             'new_stddev_pct': round(second_row['new_stddev_pct'], 2),
             'confidence': round(second_row['confidence'], 2),
             'confidence_text': second_row['confidence_text'],
-            'confidence_text_long': second_row['confidence_text_long'],
-            't_value_confidence': perfcompare_utils.T_VALUE_CONFIDENCE,
-            't_value_care_min': perfcompare_utils.T_VALUE_CARE_MIN,
             'delta_value': round(second_row['delta_value'], 2),
             'delta_percentage': round(second_row['delta_pct'], 2),
             'magnitude': round(second_row['magnitude'], 2),
@@ -615,9 +627,6 @@ def get_expected(
         len(base_perf_data_values), len(new_perf_data_values), response['confidence']
     )
     response['confidence_text'] = perfcompare_utils.get_confidence_text(response['confidence'])
-    response['confidence_text_long'] = perfcompare_utils.confidence_detailed_info(
-        response['confidence_text']
-    )
     response['is_complete'] = True
     response['more_runs_are_needed'] = perfcompare_utils.more_runs_are_needed(
         response['is_complete'], response['is_confident'], len(base_perf_data_values)

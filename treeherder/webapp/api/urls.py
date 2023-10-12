@@ -1,5 +1,6 @@
 from django.urls import include, re_path
 from rest_framework import routers
+from rest_framework.schemas import get_schema_view
 
 from treeherder.webapp.api import (
     auth,
@@ -163,9 +164,15 @@ urlpatterns = [
         name='performance-summary',
     ),
     re_path(
+        r'^performance/alertsummary-tasks/$',
+        performance_data.PerformanceAlertSummaryTasks.as_view(),
+        name='performance-alertsummary-tasks',
+    ),
+    re_path(
         r'^perfcompare/results/$',
         performance_data.PerfCompareResults.as_view(),
         name='perfcompare-results',
     ),
     re_path(r'^csp-report/$', csp_report.csp_report_collector, name='csp-report'),
+    re_path(r'^schema/', get_schema_view(title='Treeherder Rest API'), name='openapi-schema'),
 ]

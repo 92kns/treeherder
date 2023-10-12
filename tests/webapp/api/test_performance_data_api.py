@@ -4,9 +4,11 @@ import datetime
 from django.urls import reverse
 from collections import defaultdict
 
+from tests.conftest import create_perf_alert
 from treeherder.model.models import MachinePlatform, Push
 from treeherder.webapp.api.performance_data import PerformanceSummary
 from treeherder.perf.models import (
+    PerformanceAlert,
     PerformanceDatum,
     PerformanceFramework,
     PerformanceSignature,
@@ -58,7 +60,6 @@ def test_perf_signature_same_hash_different_framework(test_perf_signature):
 
 
 def test_no_summary_performance_data(client, test_perf_signature, test_repository):
-
     resp = client.get(
         reverse('performance-signatures-list', kwargs={"project": test_repository.name})
     )
@@ -366,7 +367,7 @@ def test_filter_data_by_interval(
     client, test_repository, test_perf_signature, interval, exp_push_ids
 ):
     # create some test data
-    for (i, timestamp) in enumerate(
+    for i, timestamp in enumerate(
         [NOW, NOW - datetime.timedelta(days=2), NOW - datetime.timedelta(days=7)]
     ):
         push = Push.objects.create(
@@ -404,7 +405,7 @@ def test_filter_data_by_range(
     client, test_repository, test_perf_signature, start_date, end_date, exp_push_ids
 ):
     # create some test data
-    for (i, timestamp) in enumerate(
+    for i, timestamp in enumerate(
         [NOW, NOW - datetime.timedelta(days=2), NOW - datetime.timedelta(days=5)]
     ):
         push = Push.objects.create(
@@ -453,7 +454,7 @@ def test_filter_data_by_signature(
     push = Push.objects.create(
         repository=test_repository, revision='abcdefghi', author='foo@bar.com', time=NOW
     )
-    for (i, signature) in enumerate([test_perf_signature, summary_perf_signature]):
+    for i, signature in enumerate([test_perf_signature, summary_perf_signature]):
         PerformanceDatum.objects.create(
             repository=signature.repository,
             push=push,
@@ -464,8 +465,8 @@ def test_filter_data_by_signature(
 
     # test that we get the expected value for all different permutations of
     # passing in signature_id and signature hash
-    for (i, signature) in enumerate([test_perf_signature, summary_perf_signature]):
-        for (param, value) in [
+    for i, signature in enumerate([test_perf_signature, summary_perf_signature]):
+        for param, value in [
             ('signatures', signature.signature_hash),
             ('signature_id', signature.id),
         ]:
@@ -481,7 +482,6 @@ def test_filter_data_by_signature(
 
 
 def test_perf_summary(client, test_perf_signature, test_perf_data):
-
     query_params1 = (
         '?repository={}&framework={}&interval=172800&no_subtests=true&revision={}'.format(
             test_perf_signature.repository.name,
@@ -709,3 +709,41 @@ def test_filter_out_retriggers():
 
     filtered_data = PerformanceSummary._filter_out_retriggers(copy.deepcopy(no_retriggers_data))
     assert filtered_data == no_retriggers_data
+
+
+def test_alert_summary_tasks_get(client, test_perf_alert_summary, test_perf_data):
+    create_perf_alert(
+        summary=test_perf_alert_summary,
+        series_signature=test_perf_data.first().signature,
+        related_summary=test_perf_alert_summary,
+        status=PerformanceAlert.REASSIGNED,
+    )
+    resp = client.get(
+        reverse('performance-alertsummary-tasks') + '?id={}'.format(test_perf_alert_summary.id)
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "id": test_perf_alert_summary.id,
+        "tasks": [
+            "B2G Emulator Image Build",
+            "Inari Device Image Build",
+            "Mochitest Browser Chrome",
+            "Nexus 4 Device Image Build",
+        ],
+    }
+
+
+def test_alert_summary_tasks_get_failure(client, test_perf_alert_summary):
+    # verify that we fail if PerformanceAlertSummary does not exist
+    not_exist_summary_id = test_perf_alert_summary.id
+    test_perf_alert_summary.delete()
+    resp = client.get(
+        reverse('performance-alertsummary-tasks') + '?id={}'.format(not_exist_summary_id)
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"message": ["PerformanceAlertSummary does not exist."]}
+
+    # verify that we fail if id does not exist as a query parameter
+    resp = client.get(reverse('performance-alertsummary-tasks'))
+    assert resp.status_code == 400
+    assert resp.json() == {"id": ["This field is required."]}

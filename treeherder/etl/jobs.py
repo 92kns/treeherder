@@ -321,11 +321,9 @@ def _schedule_log_parsing(job, job_logs, result, repository):
         "mozilla-beta",
         "mozilla-release",
         "mozilla-esr102",
-        "android-components",
-        "fenix",
+        "mozilla-esr115",
+        "firefox-android",
         "reference-browser",
-        "focus-android",
-        "pine",
         "toolchains",
     }
 
@@ -464,14 +462,14 @@ def store_job_data(repository, originalData):
             # make more fields visible in new relic for the job
             # where we encountered the error
             datum.update(datum.get("job", {}))
-            newrelic.agent.record_exception(params=datum)
+            newrelic.agent.notice_error(attributes=datum)
 
             # skip any jobs that hit errors in these stages.
             continue
 
     # Update the result/state of any jobs that were superseded by those ingested above.
     if superseded_job_guid_placeholders:
-        for (job_guid, superseded_by_guid) in superseded_job_guid_placeholders:
+        for job_guid, superseded_by_guid in superseded_job_guid_placeholders:
             Job.objects.filter(guid=superseded_by_guid).update(
                 result='superseded', state='completed'
             )

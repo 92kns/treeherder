@@ -19,7 +19,7 @@ def test_ingest_single_sample_job(
     job = Job.objects.get(id=1)
     # Ensure we don't inadvertently change the way we generate job-related hashes.
     assert job.option_collection_hash == '32faaecac742100f7753f0c1d0aa0add01b4046b'
-    assert job.signature.signature == '4dabe44cc898e585228c43ea21337a9b00f5ddf7'
+    assert job.signature.signature == '5bb6ec49547193d8d9274232cd9de61fb4ef2e59'
 
 
 def test_ingest_all_sample_jobs(
@@ -121,7 +121,7 @@ def test_ingest_running_to_retry_to_success_sample_job(
     job_guid_root = job['job_guid']
 
     job_data = []
-    for (state, result, job_guid) in [
+    for state, result, job_guid in [
         ('running', 'unknown', job_guid_root),
         ('completed', 'retry', job_guid_root + "_" + str(job['end_timestamp'])[-5:]),
         ('completed', 'success', job_guid_root),
@@ -132,7 +132,7 @@ def test_ingest_running_to_retry_to_success_sample_job(
         new_job_datum['job']['job_guid'] = job_guid
         job_data.append(new_job_datum)
 
-    for (i, j) in ingestion_cycles:
+    for i, j in ingestion_cycles:
         store_job_data(test_repository, job_data[i:j])
 
     assert Job.objects.count() == 2
@@ -165,7 +165,7 @@ def test_ingest_running_to_retry_to_success_sample_job_multiple_retries(
     job_guid_root = job['job_guid']
 
     job_data = []
-    for (state, result, job_guid) in [
+    for state, result, job_guid in [
         ('running', 'unknown', job_guid_root),
         ('completed', 'retry', job_guid_root + "_" + str(job['end_timestamp'])[-5:]),
         ('completed', 'retry', job_guid_root + "_12345"),
@@ -177,7 +177,7 @@ def test_ingest_running_to_retry_to_success_sample_job_multiple_retries(
         new_job_datum['job']['job_guid'] = job_guid
         job_data.append(new_job_datum)
 
-    for (i, j) in ingestion_cycles:
+    for i, j in ingestion_cycles:
         ins = job_data[i:j]
         store_job_data(test_repository, ins)
 

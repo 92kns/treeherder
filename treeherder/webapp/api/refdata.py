@@ -28,7 +28,7 @@ class OptionCollectionHashViewSet(viewsets.ViewSet):
         option_collection_map = models.OptionCollection.objects.get_option_collection_map()
 
         ret = []
-        for (option_hash, option_names) in option_collection_map.items():
+        for option_hash, option_names in option_collection_map.items():
             ret.append(
                 {
                     'option_collection_hash': option_hash,
@@ -42,7 +42,7 @@ class FailureClassificationViewSet(viewsets.ReadOnlyModelViewSet):
 
     """ViewSet for the refdata FailureClassification model"""
 
-    queryset = models.FailureClassification.objects.exclude(name="intermittent needs filing")
+    queryset = models.FailureClassification.objects
     serializer_class = th_serializers.FailureClassificationSerializer
 
 

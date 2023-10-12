@@ -17,8 +17,9 @@ LINE_CACHE_TIMEOUT_DAYS = 21
 LINE_CACHE_TIMEOUT = 86400 * LINE_CACHE_TIMEOUT_DAYS
 
 LEAK_RE = re.compile(r'\d+ bytes leaked \((.+)\)$|leak at (.+)$')
-CRASH_RE = re.compile(r'.+ application crashed \[@ (.+)\]$')
+CRASH_RE = re.compile(r'.+ application crashed \[@ (.+)\] \|.+')
 MOZHARNESS_RE = re.compile(r'^\d+:\d+:\d+[ ]+(?:DEBUG|INFO|WARNING|ERROR|CRITICAL|FATAL) - [ ]?')
+MARIONETTE_RE = re.compile(r'.+marionette([_harness/]?).*/test_.+.py ([A-Za-z]+).+')
 PROCESS_ID_RE = re.compile(r"(?:PID \d+|GECKO\(\d+\)) \| +")
 REFTEST_RE = re.compile(r'\s+[=!]=\s+.*')
 PREFIX_PATTERN = r'^(TEST-UNEXPECTED-\S+|PROCESS-CRASH)\s+\|\s+'
@@ -37,7 +38,9 @@ def get_error_summary(job, queryset=None):
         return cached_error_summary
 
     # add support for error line caching
-    line_cache_key = 'error_lines'
+    line_cache_key = 'mc_error_lines'
+    if job.repository == "comm-central":
+        line_cache_key = 'cc_error_lines'
     line_cache = cache.get(line_cache_key)
     if line_cache is None:
         line_cache = {str(job.submit_time.date()): {}}
@@ -122,7 +125,7 @@ def bug_suggestions_line(
     for day in line_cache.keys():
         counter += line_cache[day].get(cache_clean_line, 0)
 
-    count_branches = ['autoland', 'mozilla-central']
+    count_branches = ['autoland', 'mozilla-central', 'comm-central']
     if project and str(project.name) in count_branches:
         if cache_clean_line not in line_cache[today].keys():
             line_cache[today][cache_clean_line] = 0
@@ -143,10 +146,14 @@ def bug_suggestions_line(
     # collect open recent and all other bugs suggestions
     search_terms = []
     if search_term:
-        search_terms.append(search_term)
-        if search_term not in term_cache:
-            term_cache[search_term] = Bugscache.search(search_term)
-        bugs = term_cache[search_term]
+        search_terms.extend(search_term)
+        for term in search_term:
+            if not term or not term.strip():
+                continue
+            if term not in term_cache:
+                term_cache[term] = Bugscache.search(term)
+            bugs['open_recent'].extend(term_cache[term]['open_recent'])
+            bugs['all_others'].extend(term_cache[term]['all_others'])
 
     if not bugs or not (bugs['open_recent'] or bugs['all_others']):
         # no suggestions, try to use
@@ -212,9 +219,13 @@ def get_error_search_term_and_path(error_line):
     path_end = None
 
     if len(tokens) >= 3:
+        is_crash = 'PROCESS-CRASH' in tokens[0]
         # it's in the "FAILURE-TYPE | testNameOrFilePath | message" type format.
         test_name_or_path = tokens[1]
         message = tokens[2]
+        if is_crash:
+            test_name_or_path = tokens[2]
+            message = tokens[1]
         # Leak failure messages are of the form:
         # leakcheck | .*\d+ bytes leaked (Object-1, Object-2, Object-3, ...)
         match = LEAK_RE.search(message)
@@ -224,9 +235,14 @@ def get_error_search_term_and_path(error_line):
             # For reftests, remove the reference path from the tokens as this is
             # not very unique
             test_name_or_path = REFTEST_RE.sub("", test_name_or_path).replace("\\", "/")
+            # split marionette paths to only include the filename
+            if MARIONETTE_RE.search(test_name_or_path):
+                test_name_or_path = "%s.py" % test_name_or_path.split(".py ")[0]
             path_end = test_name_or_path
             # if this is a path, we are interested in the last part
             search_term = test_name_or_path.split("/")[-1]
+            if is_crash:
+                search_term = message
 
     # If the failure line was not in the pipe symbol delimited format or the search term
     # will likely return too many (or irrelevant) results (eg: too short or matches terms
@@ -250,6 +266,15 @@ def get_error_search_term_and_path(error_line):
     if search_term:
         search_term = re.sub(PREFIX_PATTERN, '', search_term)
         search_term = search_term[:100]
+
+    # for wpt tests we have testname.html?params, we need to add a search term
+    # for just testname.html.
+    # we will now return an array
+    if search_term and '?' in search_term:
+        search_name = search_term.split('?')[0]
+        search_term = [search_term, search_name]
+    else:
+        search_term = [search_term]
 
     return {
         "search_term": search_term,

@@ -105,7 +105,7 @@ class PerformanceSignature(models.Model):
         Maps a schema-specified alert change type to the internal index
         value
         """
-        for (idx, enum_val) in PerformanceSignature.ALERT_CHANGE_TYPES:
+        for idx, enum_val in PerformanceSignature.ALERT_CHANGE_TYPES:
             if enum_val == alert_change_type_input:
                 return idx
         return None
@@ -196,6 +196,7 @@ class PerformanceDatum(models.Model):
     signature = models.ForeignKey(PerformanceSignature, on_delete=models.CASCADE)
     value = models.FloatField()
     push_timestamp = models.DateTimeField(db_index=True)
+    application_version = models.CharField(max_length=50, blank=True)
 
     # job information can expire before the performance datum
     job = models.ForeignKey(Job, null=True, default=None, on_delete=models.SET_NULL)
@@ -224,6 +225,15 @@ class PerformanceDatum(models.Model):
 
     def __str__(self):
         return "{} {}".format(self.value, self.push_timestamp)
+
+
+class PerformanceDatumReplicate(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    performance_datum = models.ForeignKey(PerformanceDatum, on_delete=models.CASCADE)
+    value = models.FloatField()
+
+    class Meta:
+        db_table = 'performance_datum_replicate'
 
 
 class MultiCommitDatum(models.Model):
@@ -340,12 +350,19 @@ class PerformanceAlertSummary(models.Model):
             return PerformanceAlertSummary.UNTRIAGED
 
         # if the summary's status is IMPROVEMENT, but a regression is
-        # reassigned to that summary then set the status to untriaged
-        if any(alert.summary.status == PerformanceAlertSummary.IMPROVEMENT for alert in alerts):
+        # reassigned to that summary then set the summary's status to untriaged
+        # and change all acknowledged statuses to untriaged
+        if self.status == PerformanceAlertSummary.IMPROVEMENT:
             if any(
                 alert.status == PerformanceAlert.REASSIGNED and alert.is_regression
                 for alert in alerts
             ):
+                acknowledged_alerts = [
+                    alert for alert in alerts if alert.status == PerformanceAlert.ACKNOWLEDGED
+                ]
+                for alert in acknowledged_alerts:
+                    alert.status = PerformanceAlert.UNTRIAGED
+                    alert.save()
                 return PerformanceAlertSummary.UNTRIAGED
 
         # if all invalid, then set to invalid

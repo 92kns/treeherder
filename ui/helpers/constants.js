@@ -32,11 +32,13 @@ export const thPlatformMap = {
   'linux1804-64-tsan-qr': 'Linux 18.04 x64 WebRender tsan',
   'linux1804-64-ccov-qr': 'Linux 18.04 x64 CCov WebRender',
   'osx-cross': 'OS X Cross Compiled',
+  'osx-cross-aarch64': 'OS X AArch64 Cross Compiled',
   'osx-shippable': 'OS X Cross Compiled Shippable',
   'osx-aarch64-shippable': 'OS X AArch64 Cross Compiled Shippable',
   'osx-aarch64-devedition': 'OS X AArch64 Cross Compiled DevEdition',
   'osx-cross-noopt': 'OS X Cross Compiled NoOpt',
   'osx-cross-add-on-devel': 'OS X Cross Compiled addon',
+  'osx-cross-aarch64-add-on-devel': 'OS X AArch64 Cross Compiled addon',
   'osx-cross-ccov': 'OS X Cross Compiled CCov',
   'osx-cross-devedition': 'OS X Cross Compiled DevEdition',
   'macosx1014-64': 'OS X 10.14',
@@ -263,3 +265,9 @@ export const genericErrorMessage = 'Something went wrong';
 export const mercurialDatetimeFormat = 'ddd MMM DD HH:mm:ss YYYY ZZ';
 
 export const alertsViewDatetimeFormat = 'ddd MMM DD HH:mm YYYY';
+
+export const sxsJobTypeName = 'perftest-linux-side-by-side';
+
+export const sxsTaskName = 'side-by-side';
+
+export const geckoProfileTaskName = 'geckoprofile';

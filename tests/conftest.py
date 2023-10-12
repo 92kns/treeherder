@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import platform
+import time
 from os.path import join, dirname
 from unittest.mock import MagicMock
 
@@ -146,6 +147,7 @@ def fixture_create_signature():
         test,
         test_perf_signature,
         repository,
+        application='',
     ):
         return perf_models.PerformanceSignature.objects.create(
             repository=repository,
@@ -159,6 +161,7 @@ def fixture_create_signature():
             extra_options=extra_options,
             last_updated=datetime.datetime.now(),
             measurement_unit=measurement_unit,
+            application=application,
         )
 
     return create
@@ -322,13 +325,23 @@ def test_job(eleven_job_blobs, create_jobs):
 
 
 @pytest.fixture
-def test_two_jobs_tc_metadata(eleven_job_blobs, create_jobs):
-    job_1, job_2 = eleven_job_blobs[0:2]
+def test_two_jobs_tc_metadata(eleven_job_blobs_new_date, create_jobs):
+    job_1, job_2 = eleven_job_blobs_new_date[0:2]
     job_1['job'].update(
-        {'taskcluster_task_id': 'V3SVuxO8TFy37En_6HcXLs', 'taskcluster_retry_id': '0'}
+        {
+            'status': 'completed',
+            'result': 'testfailed',
+            'taskcluster_task_id': 'V3SVuxO8TFy37En_6HcXLs',
+            'taskcluster_retry_id': '0',
+        }
     )
     job_2['job'].update(
-        {'taskcluster_task_id': 'FJtjczXfTAGClIl6wNBo9g', 'taskcluster_retry_id': '0'}
+        {
+            'status': 'completed',
+            'result': 'testfailed',
+            'taskcluster_task_id': 'FJtjczXfTAGClIl6wNBo9g',
+            'taskcluster_retry_id': '0',
+        }
     )
     return create_jobs([job_1, job_2])
 
@@ -336,6 +349,11 @@ def test_two_jobs_tc_metadata(eleven_job_blobs, create_jobs):
 @pytest.fixture
 def test_job_2(eleven_job_blobs, create_jobs):
     return create_jobs(eleven_job_blobs[0:2])[1]
+
+
+@pytest.fixture
+def test_job_3(eleven_job_blobs, create_jobs):
+    return create_jobs(eleven_job_blobs[0:3])[2]
 
 
 @pytest.fixture
@@ -401,7 +419,6 @@ def eleven_job_blobs(sample_data, sample_push, test_repository, mock_log_parser)
 
     blobs = []
     for blob in jobs:
-
         if push_index > max_index:
             push_index = 0
 
@@ -417,6 +434,54 @@ def eleven_job_blobs(sample_data, sample_push, test_repository, mock_log_parser)
         push_index += 1
         task_id_index += 1
     return blobs
+
+
+@pytest.fixture
+def eleven_job_blobs_new_date(sample_data, sample_push, test_repository, mock_log_parser):
+    # make unique revisions
+    counter = 0
+    for push in sample_push:
+        push['push_timestamp'] = int(time.time()) + counter
+        counter += 1
+
+    store_push_data(test_repository, sample_push)
+
+    num_jobs = 11
+    jobs = sample_data.job_data[0:num_jobs]
+
+    max_index = len(sample_push) - 1
+    push_index = 0
+    task_id_index = 0
+
+    blobs = []
+    for blob in jobs:
+        if push_index > max_index:
+            push_index = 0
+
+        # Modify job structure to sync with the push sample data
+        if 'sources' in blob:
+            del blob['sources']
+
+        blob['revision'] = sample_push[push_index]['revision']
+        blob['taskcluster_task_id'] = 'V3SVuxO8TFy37En_6HcX{:0>2}'.format(task_id_index)
+        blob['taskcluster_retry_id'] = '0'
+        blob['job']['revision'] = sample_push[push_index]['revision']
+        blob['job']['submit_timestamp'] = sample_push[push_index]['push_timestamp']
+        blob['job']['start_timestamp'] = sample_push[push_index]['push_timestamp'] + 10
+        blob['job']['end_timestamp'] = sample_push[push_index]['push_timestamp'] + 1000
+        blobs.append(blob)
+
+        push_index += 1
+        task_id_index += 1
+    return blobs
+
+
+@pytest.fixture
+def eleven_jobs_stored_new_date(
+    test_repository, failure_classifications, eleven_job_blobs_new_date
+):
+    """stores a list of 11 job samples"""
+    store_job_data(test_repository, eleven_job_blobs_new_date)
 
 
 @pytest.fixture
@@ -450,7 +515,6 @@ def test_job_with_notes(test_job, test_user):
 
 @pytest.fixture
 def activate_responses(request):
-
     responses.start()
 
     def fin():
@@ -611,6 +675,32 @@ def create_perf_signature(
 
 
 @pytest.fixture
+def test_taskcluster_metadata(test_job_2) -> th_models.TaskclusterMetadata:
+    return create_taskcluster_metadata(test_job_2)
+
+
+@pytest.fixture
+def test_taskcluster_metadata_2(test_job_3) -> th_models.TaskclusterMetadata:
+    return create_taskcluster_metadata_2(test_job_3)
+
+
+def create_taskcluster_metadata(test_job_2) -> th_models.TaskclusterMetadata:
+    return th_models.TaskclusterMetadata.objects.create(
+        job=test_job_2,
+        task_id='V3SVuxO8TFy37En_6HcXLp',
+        retry_id='0',
+    )
+
+
+def create_taskcluster_metadata_2(test_job_3) -> th_models.TaskclusterMetadata:
+    return th_models.TaskclusterMetadata.objects.create(
+        job=test_job_3,
+        task_id='V3SVuxO8TFy37En_6HcXLq',
+        retry_id='0',
+    )
+
+
+@pytest.fixture
 def test_perf_signature_2(test_perf_signature):
     return perf_models.PerformanceSignature.objects.create(
         repository=test_perf_signature.repository,
@@ -648,7 +738,7 @@ def test_perf_data(test_perf_signature, eleven_jobs_stored):
     # for making things easier, ids for jobs
     # and push should be the same;
     # also, we only need a subset of jobs
-    perf_jobs = th_models.Job.objects.filter(pk__in=range(7, 11)).order_by('push__time').all()
+    perf_jobs = th_models.Job.objects.filter(pk__in=range(7, 11)).order_by('id').all()
 
     for index, job in enumerate(perf_jobs, start=1):
         job.push_id = index
@@ -707,7 +797,7 @@ def bugs(mock_bugzilla_api_request):
     process = BzApiBugProcess()
     process.run()
 
-    return th_models.Bugscache.objects.all()
+    return th_models.Bugscache.objects.all().order_by('id')
 
 
 @pytest.fixture
@@ -864,8 +954,47 @@ def test_perf_alert_summary_with_bug(
 
 
 @pytest.fixture
+def test_perf_datum(test_repository, test_perf_signature, test_job_2):
+    push = th_models.Push.objects.get(id=1)
+    perf_models.PerformanceDatum.objects.create(
+        repository=test_repository,
+        job=test_job_2,
+        push_id=1,
+        signature=test_perf_signature,
+        value=1,
+        push_timestamp=push.time,
+    )
+
+
+@pytest.fixture
+def test_perf_datum_2(test_repository, test_perf_signature, test_job_3):
+    push = th_models.Push.objects.get(id=2)
+    perf_models.PerformanceDatum.objects.create(
+        repository=test_repository,
+        job=test_job_3,
+        push_id=2,
+        signature=test_perf_signature,
+        value=1,
+        push_timestamp=push.time,
+    )
+
+
+@pytest.fixture
 def test_perf_alert(test_perf_signature, test_perf_alert_summary) -> perf_models.PerformanceAlert:
     return create_perf_alert(summary=test_perf_alert_summary, series_signature=test_perf_signature)
+
+
+@pytest.fixture
+def test_perf_alert_with_tcmetadata(
+    test_perf_signature, test_perf_alert_summary
+) -> perf_models.PerformanceAlert:
+    perf_alert = create_perf_alert(
+        summary=test_perf_alert_summary, series_signature=test_perf_signature
+    )
+    perf_alert.taskcluster_metadata = test_taskcluster_metadata_2
+    perf_alert.prev_taskcluster_metadata = test_taskcluster_metadata
+    perf_alert.save()
+    return perf_alert
 
 
 def create_perf_alert(**alert_properties) -> perf_models.PerformanceAlert:
@@ -949,7 +1078,7 @@ def generic_reference_data(test_repository):
 
 @pytest.fixture
 def bug_data(eleven_jobs_stored, test_repository, test_push, bugs):
-    jobs = th_models.Job.objects.all()
+    jobs = th_models.Job.objects.all().order_by('id')
     bug_id = bugs[0].id
     job_id = jobs[0].id
     th_models.BugJobMap.create(job_id=job_id, bug_id=bug_id)
@@ -979,7 +1108,6 @@ def test_run_data(bug_data):
 
 @pytest.fixture
 def group_data(transactional_db, eleven_job_blobs, create_jobs):
-
     query_string = '?manifest=/test&date=2022-10-01'
 
     jt = []
@@ -1008,7 +1136,7 @@ def group_data(transactional_db, eleven_job_blobs, create_jobs):
         # when creating the job, we also create the joblog, we want the last job log entry
         job_log = th_models.JobLog.objects.last()
 
-        th_models.GroupStatus.objects.create(status=1, job_log=job_log, group=g1)
+        th_models.GroupStatus.objects.create(status=1, duration=1, job_log=job_log, group=g1)
 
     return {
         'date': j.submit_time,
@@ -1034,7 +1162,7 @@ def generate_enough_perf_datum(test_repository, test_perf_signature):
     # extra data on both sides to make sure we're using the proper values
     # to generate the actual alert)
 
-    for (push_id, value) in zip([1] * 30 + [2] * 30, [1] * 30 + [2] * 30):
+    for push_id, value in zip([1] * 30 + [2] * 30, [1] * 30 + [2] * 30):
         push = th_models.Push.objects.get(id=push_id)
         perf_models.PerformanceDatum.objects.create(
             repository=test_repository,

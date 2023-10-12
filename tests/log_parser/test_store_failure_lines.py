@@ -99,13 +99,23 @@ def test_store_error_summary_astral(activate_responses, test_repository, test_jo
 
     assert failure.repository == test_repository
 
-    assert (
-        failure.test
-        == u"toolkit/content/tests/widgets/test_videocontrols_video_direction.html <U+01F346>"
-    )
-    assert failure.subtest == u"Test timed out. <U+010081>"
-    assert failure.message == u"<U+0F0151>"
-    assert failure.stack.endswith("<U+0F0151>")
+    # Specific unicode chars cannot be inserted as MySQL pseudo-UTF8 and are replaced by a plain text representation
+    if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.mysql':
+        assert (
+            failure.test
+            == "toolkit/content/tests/widgets/test_videocontrols_video_direction.html <U+01F346>"
+        )
+        assert failure.subtest == "Test timed out. <U+010081>"
+        assert failure.message == "<U+0F0151>"
+        assert failure.stack.endswith("<U+0F0151>")
+    else:
+        assert (
+            failure.test
+            == "toolkit/content/tests/widgets/test_videocontrols_video_direction.html 🍆"
+        )
+        assert failure.subtest == "Test timed out. 𐂁"
+        assert failure.message == "󰅑"
+        assert failure.stack.endswith("󰅑")
     assert failure.stackwalk_stdout is None
     assert failure.stackwalk_stderr is None
 
@@ -181,6 +191,26 @@ def test_store_error_summary_group_status(activate_responses, test_repository, t
     assert log_obj.groups.all().first().name == "dom/base/test/browser.ini"
     assert ok_groups.first().name == "dom/base/test/browser.ini"
     assert error_groups.first().name == "toolkit/components/pictureinpicture/tests/browser.ini"
+
+
+def test_group_status_duration(activate_responses, test_repository, test_job):
+    log_path = SampleData().get_log_path("mochitest-browser-chrome_errorsummary.log")
+    log_url = 'http://my-log.mozilla.org'
+
+    with open(log_path) as log_handler:
+        responses.add(responses.GET, log_url, body=log_handler.read(), status=200)
+
+    log_obj = JobLog.objects.create(job=test_job, name="errorsummary_json", url=log_url)
+    store_failure_lines(log_obj)
+
+    assert FailureLine.objects.count() == 5
+
+    ok_groups = Group.objects.filter(group_result__duration__gt=0)
+    error_groups = Group.objects.filter(group_result__duration=0)
+
+    assert ok_groups.count() == 28
+    assert error_groups.count() == 1
+    assert log_obj.groups.count() == 29
 
 
 def test_get_group_results(activate_responses, test_repository, test_job):

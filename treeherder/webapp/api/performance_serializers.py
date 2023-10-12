@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from rest_framework import exceptions, serializers
 
-from treeherder.model.models import Repository
+from treeherder.model.models import Repository, TaskclusterMetadata
 from treeherder.perf.models import (
     BackfillRecord,
     IssueTracker,
@@ -18,7 +18,6 @@ from treeherder.perf.models import (
     PerformanceTag,
 )
 from treeherder.webapp.api.utils import to_timestamp
-from treeherder.webapp.api.perfcompare_utils import T_VALUE_CONFIDENCE, T_VALUE_CARE_MIN
 
 
 class OptionalBooleanField(serializers.BooleanField):
@@ -119,6 +118,8 @@ class PerformanceSignatureSerializer(serializers.ModelSerializer):
 
 class PerformanceAlertSerializer(serializers.ModelSerializer):
     series_signature = PerformanceSignatureSerializer(read_only=True)
+    taskcluster_metadata = serializers.SerializerMethodField()
+    prev_taskcluster_metadata = serializers.SerializerMethodField()
     summary_id = serializers.SlugRelatedField(
         slug_field="id",
         source="summary",
@@ -184,6 +185,42 @@ class PerformanceAlertSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
+    def get_taskcluster_metadata(self, alert):
+        datum = PerformanceDatum.objects.filter(
+            signature=alert.series_signature,
+            repository=alert.series_signature.repository,
+            push=alert.summary.push,
+        ).first()
+        if datum:
+            try:
+                metadata = TaskclusterMetadata.objects.get(job=datum.job)
+                return {
+                    'task_id': metadata.task_id,
+                    'retry_id': metadata.retry_id,
+                }
+            except ObjectDoesNotExist:
+                return {}
+        else:
+            return {}
+
+    def get_prev_taskcluster_metadata(self, alert):
+        datum = PerformanceDatum.objects.filter(
+            signature=alert.series_signature,
+            repository=alert.series_signature.repository,
+            push=alert.summary.prev_push,
+        ).first()
+        if datum:
+            try:
+                metadata = TaskclusterMetadata.objects.get(job=datum.job)
+                return {
+                    'task_id': metadata.task_id,
+                    'retry_id': metadata.retry_id,
+                }
+            except ObjectDoesNotExist:
+                return {}
+        else:
+            return {}
+
     def get_classifier_email(self, performance_alert):
         return getattr(performance_alert.classifier, 'email', None)
 
@@ -193,6 +230,8 @@ class PerformanceAlertSerializer(serializers.ModelSerializer):
             'id',
             'status',
             'series_signature',
+            'taskcluster_metadata',
+            'prev_taskcluster_metadata',
             'is_regression',
             'prev_value',
             'new_value',
@@ -316,6 +355,7 @@ class PerformanceQueryParamsSerializer(serializers.Serializer):
     signature = serializers.CharField(required=False, allow_null=True, default=None)
     no_subtests = serializers.BooleanField(required=False)
     all_data = OptionalBooleanField()
+    replicates = OptionalBooleanField()
     no_retriggers = OptionalBooleanField()
 
     def validate(self, data):
@@ -397,6 +437,25 @@ class PerformanceSummarySerializer(serializers.ModelSerializer):
         return '{} {} {}'.format(test_suite, value['option_name'], value['extra_options'])
 
 
+class PerfAlertSummaryTasksQueryParamSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+
+    def validate(self, data):
+        try:
+            PerformanceAlertSummary.objects.get(id=data['id'])
+        except PerformanceAlertSummary.DoesNotExist:
+            raise serializers.ValidationError(
+                {'message': 'PerformanceAlertSummary does not exist.'}
+            )
+
+        return data
+
+
+class PerformanceAlertSummaryTasksSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    tasks = serializers.ListField(child=serializers.CharField(), default=[])
+
+
 class PerfCompareResultsQueryParamsSerializer(serializers.Serializer):
     base_revision = serializers.CharField(required=False, allow_null=True, default=None)
     new_revision = serializers.CharField()
@@ -422,6 +481,16 @@ class PerfCompareResultsQueryParamsSerializer(serializers.Serializer):
 
 
 class PerfCompareResultsSerializer(serializers.ModelSerializer):
+    base_rev = serializers.CharField()
+    new_rev = serializers.CharField()
+    base_app = serializers.CharField(
+        max_length=10,
+        default='',
+    )
+    new_app = serializers.CharField(
+        max_length=10,
+        default='',
+    )
     is_empty = serializers.BooleanField()
     is_complete = serializers.BooleanField()
     platform = serializers.CharField()
@@ -451,9 +520,6 @@ class PerfCompareResultsSerializer(serializers.ModelSerializer):
     new_stddev_pct = PerfCompareDecimalField()
     confidence = PerfCompareDecimalField()
     confidence_text = serializers.CharField()
-    confidence_text_long = serializers.CharField()
-    t_value_confidence = serializers.IntegerField(default=T_VALUE_CONFIDENCE)
-    t_value_care_min = serializers.IntegerField(default=T_VALUE_CARE_MIN)
     delta_value = PerfCompareDecimalField()
     delta_percentage = PerfCompareDecimalField()
     magnitude = PerfCompareDecimalField()
@@ -469,6 +535,10 @@ class PerfCompareResultsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PerformanceSignature
         fields = [
+            'base_rev',
+            'new_rev',
+            'base_app',
+            'new_app',
             'framework_id',
             'platform',
             'suite',
@@ -496,9 +566,6 @@ class PerfCompareResultsSerializer(serializers.ModelSerializer):
             'new_stddev_pct',
             'confidence',
             'confidence_text',
-            'confidence_text_long',
-            't_value_confidence',
-            't_value_care_min',
             'graphs_link',
             'delta_value',
             'delta_percentage',

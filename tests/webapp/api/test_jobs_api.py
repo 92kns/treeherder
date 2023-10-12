@@ -122,7 +122,7 @@ job_filter_values = [
     ),
     (u'result', u'success'),
     (u'result_set_id', 4),
-    (u'signature', u'aebe9066ff1c765815ec0513a3389238c80ef166'),
+    (u'signature', u'b4a4be709b937853b4ea1a49fc21bf43bf6d6406'),
     (u'start_timestamp', 1384356880),
     (u'state', u'completed'),
     (u'submit_timestamp', 1384356854),
@@ -210,7 +210,6 @@ def test_job_detail_not_found(client, test_repository):
 
 
 def test_text_log_errors(client, test_job):
-
     TextLogError.objects.create(job=test_job, line='failure 1', line_number=101)
     TextLogError.objects.create(job=test_job, line='failure 2', line_number=102)
     resp = client.get(
